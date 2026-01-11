@@ -242,7 +242,15 @@ const App: React.FC = () => {
 
       {view === ViewState.SHOWROOM && brand && (
         <div className="h-screen">
-          <Showroom brand={brand} models={models} onAddNew={() => setView(ViewState.MODEL_STUDIO)} onReset={handleReset} onBrandUpdate={handleBrandUpdated} />
+          <Showroom 
+            brand={brand} 
+            models={models} 
+            onAddNew={() => setView(ViewState.MODEL_STUDIO)} 
+            onReset={handleReset} 
+            onBrandUpdate={handleBrandUpdated}
+            onSave={handleSave}
+            onLoad={() => setShowLoadMenu(true)}
+          />
         </div>
       )}
 

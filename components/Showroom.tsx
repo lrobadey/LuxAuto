@@ -10,6 +10,8 @@ interface ShowroomProps {
   onAddNew: () => void;
   onReset: () => void;
   onBrandUpdate: (brand: Brand) => void;
+  onSave: () => void;
+  onLoad: () => void;
 }
 
 const DIRECTOR_PRESETS = {
@@ -51,7 +53,15 @@ const SpecRow: React.FC<{ label: string; value: string; isHighlight?: boolean }>
   </div>
 );
 
-export const Showroom: React.FC<ShowroomProps> = ({ brand, models, onAddNew, onReset, onBrandUpdate }) => {
+export const Showroom: React.FC<ShowroomProps> = ({ 
+  brand, 
+  models, 
+  onAddNew, 
+  onReset, 
+  onBrandUpdate,
+  onSave,
+  onLoad
+}) => {
   const [activeModel, setActiveModel] = useState<CarModel | null>(models.length > 0 ? models[models.length - 1] : null);
   const [selectedVariant, setSelectedVariant] = useState<CarVariant | null>(
     (models.length > 0 && models[models.length - 1].variants.length > 0) 
@@ -111,7 +121,10 @@ export const Showroom: React.FC<ShowroomProps> = ({ brand, models, onAddNew, onR
           <h1 className="text-2xl text-white font-serif tracking-[0.2em] leading-none uppercase">{brand.name}</h1>
           <p className="text-amber-500 text-[9px] tracking-[0.5em] uppercase mt-2 font-bold opacity-80">{brand.tagline}</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
+           <Button variant="ghost" onClick={onLoad} className="text-xs text-slate-500 hover:text-white">Load</Button>
+           <Button variant="ghost" onClick={onSave} className="text-xs text-slate-500 hover:text-amber-500">Save</Button>
+           <div className="h-8 w-px bg-white/10 mx-2"></div>
            <Button variant="ghost" className="text-xs hover:text-white" onClick={() => setIsDossierOpen(true)}>Archives</Button>
            <Button onClick={onAddNew} className="h-12 px-8">New Build</Button>
         </div>

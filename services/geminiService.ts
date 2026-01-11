@@ -28,9 +28,16 @@ const ensureArray = (data: any): any[] => {
 export const generateBrandIdentity = async (keywords: string, tone: string): Promise<Omit<Brand, 'id'>> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: `Create a bespoke luxury car brand identity. Keywords: ${keywords}, Tone: ${tone}. Include heritage, design philosophy, materials, and a lighting signature.`,
+    model: REASONING_MODEL,
+    contents: `Create a bespoke luxury car brand identity. 
+    Keywords: ${keywords}. 
+    Tone/Vibe: ${tone}. 
+    
+    CRITICAL INSTRUCTION: Perform deep creative reasoning to synthesize these keywords into a cohesive, world-class luxury narrative. 
+    The brand should feel historically grounded yet forward-thinking. 
+    Include detailed heritage, a robust design philosophy, specific materials, and a unique lighting signature.`,
     config: {
+      thinkingConfig: { thinkingBudget: 16000 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
