@@ -90,7 +90,7 @@ export const Showroom: React.FC<ShowroomProps> = ({ brand, models, onAddNew, onR
     if (!activeModel) return;
     setIsGeneratingPhoto(true);
     try {
-      const imageUrl = await generateCarImage(activeModel.visualDescription, customPrompt, activeModel.tier);
+      const imageUrl = await generateCarImage(brand, activeModel.visualDescription, customPrompt, activeModel.tier);
       const newVariant = { id: crypto.randomUUID(), prompt: customPrompt, imageUrl, createdAt: Date.now() };
       activeModel.variants.unshift(newVariant);
       setSelectedVariant(newVariant);

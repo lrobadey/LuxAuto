@@ -54,6 +54,7 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
         id: crypto.randomUUID(),
         brandId: brand.id,
         ...specsData,
+        tier: selectedTier,
         variants: [],
         isGenerating: false
       };
@@ -87,6 +88,7 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
       ].filter(Boolean).join(', ');
 
       const imageUrl = await generateCarImage(
+        brand,
         activeModel.visualDescription, 
         combinedPrompt,
         activeModel.tier,
@@ -134,6 +136,11 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
           <div className="space-y-8 bg-slate-900/20 p-10 border border-slate-800/60 backdrop-blur-sm shadow-2xl relative overflow-hidden group">
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-500/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-amber-500/20 transition-all duration-700"></div>
             
+            <div className="flex items-center gap-2 mb-2">
+               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+               <span className="text-[8px] font-mono text-blue-400 tracking-[0.3em] uppercase">Gemini 3 Pro Reasoning Core Active</span>
+            </div>
+
             <div>
               <label className="text-[10px] text-slate-500 uppercase tracking-[0.3em] mb-4 block font-bold">Class Segment</label>
               <div className="grid grid-cols-1 gap-3">
@@ -167,7 +174,7 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
               isLoading={isProcessing} 
               className="w-full py-5 text-md shadow-2xl shadow-amber-500/5"
             >
-              Initialize Synthesis
+              {isProcessing ? 'Thinking Deeply...' : 'Initialize Synthesis'}
             </Button>
           </div>
         </div>
@@ -212,7 +219,7 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
           <div className="bg-slate-900/30 border border-slate-800/50 p-8 backdrop-blur-md relative group">
             <h3 className="text-[10px] text-slate-500 uppercase tracking-[0.4em] mb-8 font-bold flex justify-between items-center">
               <span>Technical Summary</span>
-              <span className="text-amber-500/40 font-mono text-[8px]">SYS_STATUS: NOMINAL</span>
+              <span className="text-blue-400 font-mono text-[8px]">PRO_REASONING: ENABLED</span>
             </h3>
             <div className="space-y-4 font-mono text-[10px]">
               {[

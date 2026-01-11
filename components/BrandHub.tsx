@@ -195,7 +195,7 @@ export const BrandHub: React.FC<BrandHubProps> = ({ brand, onUpdate, onProceed, 
                     disabled={isEnriching}
                     className="text-amber-500 hover:text-amber-400 disabled:opacity-50 transition-colors flex items-center gap-2"
                   >
-                     {isEnriching ? 'Synthesizing Saga...' : '✨ Expand Mythology'}
+                     {isEnriching ? 'Synthesizing Saga...' : '✨ Expand Mythology (Pro Reasoning)'}
                   </button>
                 </label>
                 <textarea 

@@ -5,6 +5,7 @@ import { Brand, CarModel, CarTier, Review, LoreEntry, CarVariant } from "../type
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 const TEXT_MODEL = "gemini-3-flash-preview";
+const REASONING_MODEL = "gemini-3-pro-preview";
 const IMAGE_MODEL = "gemini-2.5-flash-image";
 
 const cleanJson = (text: string | undefined): string => {
@@ -56,9 +57,9 @@ export const generateBrandIdentity = async (keywords: string, tone: string): Pro
 export const enrichBrandHistory = async (brand: Brand): Promise<string> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: `Expand the automotive history of "${brand.name}" into a 3-paragraph saga. Current history: ${brand.history}`,
-    config: { thinkingConfig: { thinkingBudget: 4000 } }
+    model: REASONING_MODEL,
+    contents: `Expand the automotive history of "${brand.name}" into a 3-paragraph saga. Current history: ${brand.history}. Focus on the brand's evolution, engineering breakthroughs, and cultural impact.`,
+    config: { thinkingConfig: { thinkingBudget: 16000 } }
   });
   return response.text || brand.history;
 };
@@ -126,12 +127,23 @@ export const generateLoreImage = async (brandName: string, lore: LoreEntry): Pro
 export const generateCarSpecs = async (brand: Brand, tier: CarTier, requirements: string, existing: CarModel[]): Promise<any> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: `Engineer a new ${tier} model for ${brand.name}. 
-    Requirements: ${requirements}. 
-    Existing models: ${existing.map(m => m.name).join(', ')}.
-    Include a long, evocative marketing blurb (300+ words) written in a high-end luxury tone.`,
+    model: REASONING_MODEL,
+    contents: `Engineer a new ${tier} model for the luxury brand "${brand.name}". 
+    
+    BRAND CONTEXT:
+    History: ${brand.history}
+    Design Philosophy: ${brand.designPhilosophy}
+    Materials Signature: ${brand.materials || 'Luxury bespoke'}
+    Aero Philosophy: ${brand.aerodynamics || 'Proprietary'}
+    
+    ENGINEERING BRIEF: ${requirements}. 
+    EXISTING FLEET: ${existing.map(m => m.name).join(', ')}.
+    
+    CRITICAL INSTRUCTION: Perform deep engineering reasoning. Ensure the technical specifications (horsepower, torque, weight, drag coefficient) are logically consistent with the resulting performance figures (0-60mph, top speed) and aligned with the brand's DNA.
+    
+    Include a long, evocative marketing blurb (300+ words) written in a high-end luxury tone that references the brand's philosophy.`,
     config: {
+      thinkingConfig: { thinkingBudget: 24000 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -171,11 +183,19 @@ export const generateCarSpecs = async (brand: Brand, tier: CarTier, requirements
   return JSON.parse(cleanJson(response.text));
 };
 
-export const generateCarImage = async (description: string, context: string, tier: CarTier, masterRef?: string, latestRef?: string): Promise<string> => {
+export const generateCarImage = async (brand: Brand, description: string, context: string, tier: CarTier, masterRef?: string, latestRef?: string): Promise<string> => {
   const ai = getAI();
   const parts: any[] = [];
   if (masterRef) parts.push({ inlineData: { data: masterRef.split(',')[1], mimeType: 'image/png' } });
-  parts.push({ text: `Bespoke luxury ${tier} car design. Platform: ${description}. View Context: ${context}. Photorealistic, commercial photography, 8k resolution, cinematic lighting.` });
+  
+  const prompt = `Bespoke luxury ${tier} car design for ${brand.name}. 
+  Brand Philosophy: ${brand.designPhilosophy}. 
+  Visual Cues: ${brand.lightingSignature || ''}, ${brand.materials || ''}.
+  Model Blueprint: ${description}. 
+  Environment/Context: ${context}. 
+  Style: Photorealistic, high-end commercial automotive photography, 8k resolution, cinematic lighting.`;
+  
+  parts.push({ text: prompt });
   
   const response = await ai.models.generateContent({
     model: IMAGE_MODEL,
@@ -189,7 +209,12 @@ export const generateLaunchReviews = async (brand: Brand, model: CarModel): Prom
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: TEXT_MODEL,
-    contents: `Generate 3 critical media reviews for the launch of the ${brand.name} ${model.name}.`,
+    contents: `Generate 3 critical media reviews for the launch of the ${brand.name} ${model.name}.
+    Brand Tagline: ${brand.tagline}
+    Brand History Summary: ${brand.history.substring(0, 500)}...
+    Vehicle Positioning: ${model.marketingBlurb.substring(0, 300)}...
+    
+    The reviews should feel authentic to the brand's position in the luxury market.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
