@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { Brand, CarModel, CarVariant } from '../types';
+import { Brand, CarModel, CarVariant, LoreEntry } from '../types';
 import { Button } from './ui/Button';
-import { generateLaunchReviews, generateCarImage } from '../services/geminiService';
+import { generateLaunchReviews, generateCarImage, generateBrandLore, generateMarketInsight } from '../services/geminiService';
 
 interface ShowroomProps {
   brand: Brand;
@@ -10,29 +10,10 @@ interface ShowroomProps {
   onAddNew: () => void;
   onReset: () => void;
   onBrandUpdate: (brand: Brand) => void;
+  onModelUpdate: (model: CarModel) => void;
   onSave: () => void;
   onLoad: () => void;
 }
-
-const DIRECTOR_PRESETS = {
-  Locations: [
-    { label: 'Salt Flats', value: 'on the vast white Bonneville Salt Flats' },
-    { label: 'Neo-Tokyo', value: 'in a futuristic cyberpunk city street with neon signs' },
-    { label: 'Amalfi Coast', value: 'on a winding cliffside road along the Amalfi Coast' },
-    { label: 'Infinite Studio', value: 'in a professional infinite white photography studio' },
-    { label: 'French Chateau', value: 'on the gravel driveway of a historic French chateau' },
-  ],
-  Lighting: [
-    { label: 'Golden Hour', value: 'bathed in warm golden hour sunlight' },
-    { label: 'Midnight Rain', value: 'at night with heavy rain and reflections' },
-    { label: 'Studio High-Key', value: 'with bright commercial studio lighting' },
-  ],
-  Camera: [
-    { label: 'Low Angle', value: 'low angle camera looking up' },
-    { label: 'Side Profile', value: 'perfect side profile view' },
-    { label: 'Tracking Shot', value: 'high speed tracking shot' },
-  ]
-};
 
 const TabButton: React.FC<{ active: boolean; onClick: () => void; label: string }> = ({ active, onClick, label }) => (
   <button
@@ -59,6 +40,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
   onAddNew, 
   onReset, 
   onBrandUpdate,
+  onModelUpdate,
   onSave,
   onLoad
 }) => {
@@ -69,12 +51,14 @@ export const Showroom: React.FC<ShowroomProps> = ({
       : null
   );
   
-  const [activeTab, setActiveTab] = useState<'specs' | 'gallery' | 'media'>('gallery');
+  const [activeTab, setActiveTab] = useState<'specs' | 'gallery' | 'media' | 'market'>('gallery');
   const [isLaunching, setIsLaunching] = useState(false);
   const [isGeneratingPhoto, setIsGeneratingPhoto] = useState(false);
+  const [isAnalyzingMarket, setIsAnalyzingMarket] = useState(false);
   
   const [customPrompt, setCustomPrompt] = useState('');
   const [isDossierOpen, setIsDossierOpen] = useState(false);
+  const [isLoadingLore, setIsLoadingLore] = useState(false);
   const [sessionReviews, setSessionReviews] = useState<Record<string, any[]>>({});
 
   const handleModelChange = (model: CarModel) => {
@@ -96,19 +80,60 @@ export const Showroom: React.FC<ShowroomProps> = ({
     }
   };
 
+  const handleAnalyzeMarket = async () => {
+    if (!activeModel) return;
+    setIsAnalyzingMarket(true);
+    try {
+      const insight = await generateMarketInsight(brand, activeModel);
+      const updatedModel = { ...activeModel, marketInsight: insight };
+      setActiveModel(updatedModel);
+      onModelUpdate(updatedModel);
+    } catch (e) {
+      console.error(e);
+      alert("Market analysis failed.");
+    } finally {
+      setIsAnalyzingMarket(false);
+    }
+  };
+
   const handleGenerateNewPhoto = async () => {
     if (!activeModel) return;
     setIsGeneratingPhoto(true);
     try {
       const imageUrl = await generateCarImage(brand, activeModel.visualDescription, customPrompt, activeModel.tier);
       const newVariant = { id: crypto.randomUUID(), prompt: customPrompt, imageUrl, createdAt: Date.now() };
-      activeModel.variants.unshift(newVariant);
+      const updatedModel = {
+         ...activeModel,
+         variants: [newVariant, ...activeModel.variants]
+      };
+      setActiveModel(updatedModel);
+      onModelUpdate(updatedModel);
       setSelectedVariant(newVariant);
       setCustomPrompt('');
     } catch (e) {
       alert("Capture failed.");
     } finally {
       setIsGeneratingPhoto(false);
+    }
+  };
+
+  const handleOpenArchives = async () => {
+    setIsDossierOpen(true);
+    if (!brand.lore || brand.lore.length === 0) {
+      setIsLoadingLore(true);
+      try {
+        const lore = await generateBrandLore(brand);
+        const sortedLore = lore.sort((a, b) => {
+           const yearA = parseInt(a.year.replace(/\D/g, '')) || 0;
+           const yearB = parseInt(b.year.replace(/\D/g, '')) || 0;
+           return yearA - yearB;
+        });
+        onBrandUpdate({ ...brand, lore: sortedLore });
+      } catch (e) {
+        console.error("Failed to load lore", e);
+      } finally {
+        setIsLoadingLore(false);
+      }
     }
   };
 
@@ -125,7 +150,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
            <Button variant="ghost" onClick={onLoad} className="text-xs text-slate-500 hover:text-white">Load</Button>
            <Button variant="ghost" onClick={onSave} className="text-xs text-slate-500 hover:text-amber-500">Save</Button>
            <div className="h-8 w-px bg-white/10 mx-2"></div>
-           <Button variant="ghost" className="text-xs hover:text-white" onClick={() => setIsDossierOpen(true)}>Archives</Button>
+           <Button variant="ghost" className="text-xs hover:text-white" onClick={handleOpenArchives}>Archives</Button>
            <Button onClick={onAddNew} className="h-12 px-8">New Build</Button>
         </div>
       </div>
@@ -169,6 +194,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
                 <TabButton active={activeTab === 'gallery'} onClick={() => setActiveTab('gallery')} label="Visual Portfolio" />
                 <TabButton active={activeTab === 'specs'} onClick={() => setActiveTab('specs')} label="Technical Manifesto" />
                 <TabButton active={activeTab === 'media'} onClick={() => setActiveTab('media')} label="Global Reception" />
+                <TabButton active={activeTab === 'market'} onClick={() => setActiveTab('market')} label="Market Analytics" />
               </div>
 
               {activeTab === 'gallery' && (
@@ -285,38 +311,139 @@ export const Showroom: React.FC<ShowroomProps> = ({
                    )}
                 </div>
               )}
+
+              {activeTab === 'market' && (
+                <div className="p-16 max-w-7xl mx-auto">
+                   {!activeModel.marketInsight ? (
+                     <div className="text-center py-24 border border-dashed border-slate-800 rounded-lg bg-slate-900/10">
+                       <div className="mb-8 text-4xl opacity-20">📊</div>
+                       <p className="text-slate-500 text-sm font-serif mb-8 uppercase tracking-[0.2em]">Financial Data Not Yet Synthesized</p>
+                       <Button onClick={handleAnalyzeMarket} isLoading={isAnalyzingMarket} className="px-12 h-14">Commission Market Valuation</Button>
+                     </div>
+                   ) : (
+                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                       <div className="lg:col-span-1 space-y-8">
+                          <div className="bg-slate-900/20 border border-slate-800 p-8 flex flex-col items-center justify-center relative overflow-hidden">
+                             <h4 className="text-[9px] text-slate-500 uppercase tracking-[0.4em] font-bold mb-6">Collector Grade</h4>
+                             <div className="relative w-40 h-40 flex items-center justify-center">
+                               <svg className="absolute inset-0 w-full h-full -rotate-90">
+                                 <circle cx="80" cy="80" r="70" stroke="#1e293b" strokeWidth="8" fill="none" />
+                                 <circle 
+                                    cx="80" cy="80" r="70" stroke="#f59e0b" strokeWidth="8" fill="none" 
+                                    strokeDasharray="440" 
+                                    strokeDashoffset={440 - (440 * activeModel.marketInsight.collectorScore / 100)} 
+                                    className="transition-all duration-1000"
+                                 />
+                               </svg>
+                               <span className="text-5xl font-serif text-white">{activeModel.marketInsight.collectorScore}</span>
+                             </div>
+                          </div>
+
+                          <div className="bg-slate-900/20 border border-slate-800 p-8">
+                             <h4 className="text-[9px] text-slate-500 uppercase tracking-[0.4em] font-bold mb-4">Resale Trajectory</h4>
+                             <div className="flex items-center gap-4">
+                                <span className={`text-2xl ${activeModel.marketInsight.resaleValue.includes('Deprec') ? 'text-red-500' : 'text-green-500'}`}>
+                                   {activeModel.marketInsight.resaleValue.includes('Deprec') ? '↘' : '↗'}
+                                </span>
+                                <span className="text-lg font-mono text-slate-200">{activeModel.marketInsight.resaleValue}</span>
+                             </div>
+                          </div>
+                       </div>
+
+                       <div className="lg:col-span-2 space-y-8">
+                          <div className="bg-slate-900/20 border border-slate-800 p-10">
+                             <h4 className="text-[9px] text-amber-500 uppercase tracking-[0.4em] font-bold mb-6">Target Profile</h4>
+                             <p className="text-3xl font-serif text-white mb-4 leading-tight">
+                               {activeModel.marketInsight.targetDemographic}
+                             </p>
+                          </div>
+                          <div className="bg-slate-900/20 border border-slate-800 p-10">
+                             <h4 className="text-[9px] text-slate-500 uppercase tracking-[0.4em] font-bold mb-6">Investment Memorandum</h4>
+                             <p className="text-slate-400 leading-relaxed font-light text-lg">
+                               {activeModel.marketInsight.marketSentiment}
+                             </p>
+                          </div>
+                       </div>
+                     </div>
+                   )}
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
       {isDossierOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-2xl p-16 overflow-y-auto animate-fade-in">
-           <div className="max-w-6xl mx-auto">
-             <div className="flex justify-between items-center mb-16 border-b border-amber-500/20 pb-8">
+        <div className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-2xl p-0 overflow-y-auto animate-fade-in">
+           <div className="max-w-7xl mx-auto p-12">
+             <div className="flex justify-between items-center mb-16 border-b border-amber-500/20 pb-8 sticky top-0 bg-slate-950/95 pt-4 z-50">
                 <div>
                   <h2 className="text-5xl font-serif uppercase tracking-tighter text-white">{brand.name}</h2>
                   <p className="text-amber-500 text-[10px] uppercase tracking-[0.6em] font-bold mt-2">Historical Archives</p>
                 </div>
                 <button 
                   onClick={() => setIsDossierOpen(false)} 
-                  className="w-12 h-12 rounded-full border border-slate-800 flex items-center justify-center text-slate-500 hover:text-white hover:border-white transition-all"
+                  className="w-12 h-12 rounded-full border border-slate-800 flex items-center justify-center text-slate-500 hover:text-white hover:border-white transition-all hover:bg-white hover:text-black"
                 >
                   ✕
                 </button>
              </div>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-               {brand.lore?.map((l, i) => (
-                 <div key={l.id || i} className="bg-slate-900/20 border border-slate-800 p-10 hover:bg-slate-900/40 hover:border-amber-500/20 transition-all duration-700">
-                    <span className="text-amber-500 font-bold font-mono tracking-widest text-lg block mb-4">{l.year}</span>
-                    <h3 className="text-2xl text-white mb-6 font-serif uppercase tracking-wide leading-tight">{l.title}</h3>
-                    <p className="text-slate-400 leading-relaxed font-light">{l.content}</p>
+
+             {isLoadingLore ? (
+                <div className="h-[50vh] flex flex-col items-center justify-center">
+                   <div className="w-48 h-0.5 bg-slate-900 relative overflow-hidden mb-8">
+                     <div className="absolute inset-0 bg-amber-500 animate-[loading_1s_infinite]"></div>
+                   </div>
+                   <p className="text-[10px] font-mono text-amber-500 uppercase tracking-[0.4em] animate-pulse">Recovering Lost Archives...</p>
+                </div>
+             ) : (
+               <div className="space-y-24 pb-24">
+                 <div className="bg-slate-900/30 border-l-2 border-amber-500 p-12">
+                    <h3 className="text-3xl font-serif text-white mb-8 uppercase tracking-widest">The Origin Story</h3>
+                    <p className="text-xl text-slate-300 font-light leading-relaxed whitespace-pre-wrap serif italic">
+                      {brand.history}
+                    </p>
+                    <div className="mt-12 flex gap-8">
+                       <div className="space-y-2">
+                         <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-bold block">Established</span>
+                         <span className="text-white font-mono">{brand.establishedYear || 'Unknown'}</span>
+                       </div>
+                       <div className="space-y-2">
+                         <span className="text-[9px] uppercase tracking-[0.2em] text-slate-500 font-bold block">Headquarters</span>
+                         <span className="text-white font-mono">{brand.headquarters || 'Global'}</span>
+                       </div>
+                    </div>
                  </div>
-               ))}
-             </div>
+
+                 <div>
+                   <h3 className="text-[10px] text-slate-500 uppercase tracking-[0.4em] font-bold mb-12 flex items-center gap-4">
+                     <span className="w-12 h-px bg-slate-800"></span> Chronological Milestones
+                   </h3>
+                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+                     {brand.lore?.map((l, i) => (
+                       <div key={l.id || i} className="group bg-slate-900/20 border border-slate-800/50 p-10 hover:bg-slate-900/40 hover:border-amber-500/20 transition-all duration-700 relative overflow-hidden">
+                          <div className="absolute top-0 right-0 p-6 opacity-10 font-serif text-6xl text-amber-500 group-hover:scale-110 transition-transform duration-700 select-none">
+                            {i + 1}
+                          </div>
+                          <span className="text-amber-500 font-bold font-mono tracking-widest text-lg block mb-6 relative z-10">{l.year}</span>
+                          <h3 className="text-2xl text-white mb-6 font-serif uppercase tracking-wide leading-tight relative z-10">{l.title}</h3>
+                          <p className="text-slate-400 leading-relaxed font-light relative z-10 text-sm">{l.content}</p>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               </div>
+             )}
            </div>
         </div>
       )}
+      
+      <style>{`
+        @keyframes loading {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
     </div>
   );
 };

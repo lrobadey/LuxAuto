@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { Brand, CarModel, CarTier, Review, LoreEntry, CarVariant } from "../types";
+import { Brand, CarModel, CarTier, Review, LoreEntry, CarVariant, MarketInsight } from "../types";
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
@@ -277,4 +277,37 @@ export const generateLaunchReviews = async (brand: Brand, model: CarModel): Prom
   });
   const raw = JSON.parse(cleanJson(response.text));
   return ensureArray(raw);
+};
+
+export const generateMarketInsight = async (brand: Brand, model: CarModel): Promise<MarketInsight> => {
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: REASONING_MODEL,
+    contents: `Analyze the high-end automotive market potential for the ${brand.name} ${model.name}.
+    Price: ${model.price}
+    Tier: ${model.tier}
+    Specs: ${JSON.stringify(model.specs)}
+    
+    Determine:
+    1. Collector Score (0-100) based on rarity, engineering, and brand prestige.
+    2. Resale Value projection (e.g., "High Appreciation (+15%/yr)", "Stable Hold", "Depreciating Asset", "Future Classic").
+    3. Target Demographic (specific buyer persona, e.g., "Silicon Valley Magnate", "Old World Royalty", "Track Day Purist").
+    4. Market Sentiment (A sophisticated investment memorandum paragraph).
+    
+    Return JSON.`,
+    config: {
+      thinkingConfig: { thinkingBudget: 2048 },
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          collectorScore: { type: Type.NUMBER },
+          resaleValue: { type: Type.STRING },
+          targetDemographic: { type: Type.STRING },
+          marketSentiment: { type: Type.STRING }
+        }
+      }
+    }
+  });
+  return JSON.parse(cleanJson(response.text));
 };

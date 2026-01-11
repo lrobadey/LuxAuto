@@ -78,6 +78,13 @@ export interface Review {
   persona: 'PURIST' | 'FUTURIST' | 'LIFESTYLE';
 }
 
+export interface MarketInsight {
+  collectorScore: number; // 0-100
+  resaleValue: string; // e.g. "High Appreciation", "Stable", "Depreciating"
+  targetDemographic: string; // Description of who buys this
+  marketSentiment: string; // A brief analysis paragraph
+}
+
 export interface CarModel {
   id: string;
   brandId: string;
@@ -90,6 +97,7 @@ export interface CarModel {
   marketingBlurb: string; // Long marketing-focused description
   variants: CarVariant[];
   reviews?: Review[];
+  marketInsight?: MarketInsight;
   isGenerating?: boolean;
 }
 
