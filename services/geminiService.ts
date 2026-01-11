@@ -11,7 +11,8 @@ const IMAGE_MODEL = "gemini-2.5-flash-image";
 const cleanJson = (text: string | undefined): string => {
   if (!text) return "[]";
   let clean = text.trim();
-  clean = clean.replace(/^```json\s*/i, '').replace(/```\s*$/g, '').trim();
+  // Remove markdown code blocks
+  clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
   return clean;
 };
 
@@ -74,51 +75,79 @@ export const enrichBrandHistory = async (brand: Brand): Promise<string> => {
 export const generateBrandLore = async (brand: Brand): Promise<LoreEntry[]> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: `Generate 4 key historical milestones for the luxury brand "${brand.name}".`,
+    model: REASONING_MODEL,
+    contents: `Generate 4 key historical milestones for the luxury brand "${brand.name}".
+    Brand History Context: ${brand.history}
+    
+    Return a JSON object with a "milestones" property containing the array.`,
     config: {
+      thinkingConfig: { thinkingBudget: 1024 },
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            title: { type: Type.STRING },
-            content: { type: Type.STRING },
-            year: { type: Type.STRING }
+        type: Type.OBJECT,
+        properties: {
+          milestones: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING },
+                content: { type: Type.STRING },
+                year: { type: Type.STRING }
+              }
+            }
           }
         }
       }
     }
   });
-  const raw = JSON.parse(cleanJson(response.text));
-  return ensureArray(raw).map((l: any) => ({ ...l, id: l.id || crypto.randomUUID() }));
+  
+  try {
+    const raw = JSON.parse(cleanJson(response.text));
+    return ensureArray(raw).map((l: any) => ({ ...l, id: l.id || crypto.randomUUID() }));
+  } catch (e) {
+    console.error("Lore parse error", e, response.text);
+    return [];
+  }
 };
 
 export const generateAdditionalLore = async (brand: Brand, existing: string[]): Promise<LoreEntry[]> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: `Generate 2 more unique historical records for "${brand.name}". Avoid: ${existing.join(', ')}`,
+    model: REASONING_MODEL,
+    contents: `Generate 2 more unique historical records for "${brand.name}". Avoid these titles: ${existing.join(', ')}.
+    Return a JSON object with a "milestones" property.`,
     config: {
+      thinkingConfig: { thinkingBudget: 1024 },
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            title: { type: Type.STRING },
-            content: { type: Type.STRING },
-            year: { type: Type.STRING }
+        type: Type.OBJECT,
+        properties: {
+          milestones: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING },
+                content: { type: Type.STRING },
+                year: { type: Type.STRING }
+              }
+            }
           }
         }
       }
     }
   });
-  const raw = JSON.parse(cleanJson(response.text));
-  return ensureArray(raw).map((l: any) => ({ ...l, id: l.id || crypto.randomUUID() }));
+
+  try {
+    const raw = JSON.parse(cleanJson(response.text));
+    return ensureArray(raw).map((l: any) => ({ ...l, id: l.id || crypto.randomUUID() }));
+  } catch (e) {
+    console.error("Lore parse error", e, response.text);
+    return [];
+  }
 };
 
 export const generateLoreImage = async (brandName: string, lore: LoreEntry): Promise<string> => {
@@ -221,20 +250,26 @@ export const generateLaunchReviews = async (brand: Brand, model: CarModel): Prom
     Brand History Summary: ${brand.history.substring(0, 500)}...
     Vehicle Positioning: ${model.marketingBlurb.substring(0, 300)}...
     
-    The reviews should feel authentic to the brand's position in the luxury market.`,
+    The reviews should feel authentic to the brand's position in the luxury market.
+    Return a JSON object with a "reviews" property.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            publication: { type: Type.STRING },
-            author: { type: Type.STRING },
-            score: { type: Type.STRING },
-            headline: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            persona: { type: Type.STRING, enum: ["PURIST", "FUTURIST", "LIFESTYLE"] }
+        type: Type.OBJECT,
+        properties: {
+          reviews: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                publication: { type: Type.STRING },
+                author: { type: Type.STRING },
+                score: { type: Type.STRING },
+                headline: { type: Type.STRING },
+                summary: { type: Type.STRING },
+                persona: { type: Type.STRING, enum: ["PURIST", "FUTURIST", "LIFESTYLE"] }
+              }
+            }
           }
         }
       }
