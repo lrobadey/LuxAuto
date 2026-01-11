@@ -1,0 +1,100 @@
+
+export enum ViewState {
+  WELCOME = 'WELCOME',
+  BRAND_CREATION = 'BRAND_CREATION',
+  BRAND_HUB = 'BRAND_HUB',
+  MODEL_STUDIO = 'MODEL_STUDIO',
+  SHOWROOM = 'SHOWROOM'
+}
+
+export interface LoreEntry {
+  id: string;
+  title: string;
+  content: string;
+  year: string;
+  imageUrl?: string;
+}
+
+export interface Brand {
+  id: string;
+  name: string;
+  tagline: string;
+  history: string;
+  designPhilosophy: string;
+  colors: string[];
+  logoStyle: string;
+  // Design Modules
+  materials?: string;
+  lightingSignature?: string;
+  aerodynamics?: string;
+  // Heritage
+  establishedYear?: string;
+  headquarters?: string;
+  lore?: LoreEntry[];
+}
+
+export enum CarTier {
+  ENTRY_LUXURY = 'Entry Luxury',
+  MID_SIZE_LUXURY = 'Mid-Size Luxury',
+  FLAGSHIP = 'Flagship',
+  SUV_ESTATE = 'SUV / Estate',
+  HYPERCAR = 'Hypercar'
+}
+
+export interface CarVariant {
+  id: string;
+  prompt: string;
+  imageUrl: string;
+  createdAt: number;
+}
+
+export interface CarSpecs {
+  engine: string;
+  horsepower: string;
+  torque: string;
+  acceleration: string;
+  topSpeed: string;
+  weight: string;
+  drivetrain: string;
+  dimensions: string;
+  transmission: string;
+  dragCoefficient: string;
+  suspension: string;
+  brakes: string;
+  // New detailed specs
+  wheelDesign: string;
+  interiorMaterials: string;
+  soundSystem: string;
+  chassisConstruction: string;
+  driverAssistance: string;
+}
+
+export interface Review {
+  publication: string;
+  author: string;
+  score: string;
+  headline: string;
+  summary: string;
+  persona: 'PURIST' | 'FUTURIST' | 'LIFESTYLE';
+}
+
+export interface CarModel {
+  id: string;
+  brandId: string;
+  name: string;
+  tagline: string;
+  tier: CarTier;
+  price: string;
+  specs: CarSpecs;
+  visualDescription: string;
+  marketingBlurb: string; // Long marketing-focused description
+  variants: CarVariant[];
+  reviews?: Review[];
+  isGenerating?: boolean;
+}
+
+export interface AppState {
+  view: ViewState;
+  currentBrand: Brand | null;
+  models: CarModel[];
+}
