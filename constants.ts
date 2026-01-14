@@ -1,4 +1,4 @@
-import { CarTier } from "./types";
+import { CarTier } from "./types.js";
 
 export const DEFAULT_TIERS = [
   CarTier.ENTRY_LUXURY,

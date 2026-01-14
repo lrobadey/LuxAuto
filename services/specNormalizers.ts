@@ -1,4 +1,4 @@
-import { CarSpecs } from "../types";
+import { CarSpecs } from "../types.js";
 
 export const DEFAULT_SPECS: CarSpecs = {
   engine: "",
