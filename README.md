@@ -15,6 +15,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1pq54Ld5XG1Qs3SVRSb8_cF
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set `GEMINI_API_KEY` in your Vercel project (and in `.env.local` if using `vercel dev`).
 3. Run the app:
-   `npm run dev`
+   - `vercel dev` (recommended to run the UI + serverless API)
+   - or `npm run dev` (UI only; set `VITE_API_BASE_URL` to your deployed Vercel URL for AI features)

@@ -1,313 +1,104 @@
+import { Brand, BrandBrief, CarModel, CarTier, LoreEntry, Review, MarketInsight, ModelProgram } from '../types';
 
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { Brand, CarModel, CarTier, Review, LoreEntry, CarVariant, MarketInsight } from "../types";
+const RAW_BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const API_BASE_URL = RAW_BASE_URL ? RAW_BASE_URL.replace(/\/$/, '') : '';
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-
-const TEXT_MODEL = "gemini-3-flash-preview";
-const REASONING_MODEL = "gemini-3-pro-preview";
-const IMAGE_MODEL = "gemini-2.5-flash-image";
-
-const cleanJson = (text: string | undefined): string => {
-  if (!text) return "[]";
-  let clean = text.trim();
-  // Remove markdown code blocks
-  clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
-  return clean;
+const buildUrl = (path: string) => {
+  if (!API_BASE_URL) return path;
+  return `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
 };
 
-const ensureArray = (data: any): any[] => {
-  if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object') {
-    const values = Object.values(data);
-    const arrayPart = values.find(v => Array.isArray(v));
-    if (arrayPart) return arrayPart as any[];
-  }
-  return [];
-};
-
-export const generateBrandIdentity = async (keywords: string, tone: string): Promise<Omit<Brand, 'id'>> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: REASONING_MODEL,
-    contents: `Create a bespoke luxury car brand identity. 
-    Keywords: ${keywords}. 
-    Tone/Vibe: ${tone}. 
-    
-    CRITICAL INSTRUCTION: Perform deep creative reasoning to synthesize these keywords into a cohesive, world-class luxury narrative. 
-    The brand should feel historically grounded yet forward-thinking. 
-    Include detailed heritage, a robust design philosophy, specific materials, and a unique lighting signature.`,
-    config: {
-      thinkingConfig: { thinkingBudget: 16000 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          tagline: { type: Type.STRING },
-          history: { type: Type.STRING },
-          establishedYear: { type: Type.STRING },
-          headquarters: { type: Type.STRING },
-          designPhilosophy: { type: Type.STRING },
-          colors: { type: Type.ARRAY, items: { type: Type.STRING } },
-          logoStyle: { type: Type.STRING },
-          materials: { type: Type.STRING },
-          lightingSignature: { type: Type.STRING },
-          aerodynamics: { type: Type.STRING }
-        },
-        required: ["name", "tagline", "history", "colors", "designPhilosophy"]
-      }
-    }
+const postJson = async <T>(path: string, body: unknown): Promise<T> => {
+  const response = await fetch(buildUrl(path), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
   });
-  return JSON.parse(cleanJson(response.text));
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(message || `Request failed with status ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+};
+
+export const generateBrandIdentity = async (
+  keywords: string,
+  tone: string,
+  brief?: BrandBrief
+): Promise<Omit<Brand, 'id'>> => {
+  return postJson<Omit<Brand, 'id'>>('/api/brand-identity', { keywords, tone, brief });
 };
 
 export const enrichBrandHistory = async (brand: Brand): Promise<string> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: REASONING_MODEL,
-    contents: `Expand the automotive history of "${brand.name}" into a 3-paragraph saga. Current history: ${brand.history}. Focus on the brand's evolution, engineering breakthroughs, and cultural impact.`,
-    config: { thinkingConfig: { thinkingBudget: 16000 } }
-  });
-  return response.text || brand.history;
+  const { history } = await postJson<{ history: string }>('/api/enrich-brand-history', { brand });
+  return history;
 };
 
 export const generateBrandLore = async (brand: Brand): Promise<LoreEntry[]> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: REASONING_MODEL,
-    contents: `Generate 4 key historical milestones for the luxury brand "${brand.name}".
-    Brand History Context: ${brand.history}
-    
-    Return a JSON object with a "milestones" property containing the array.`,
-    config: {
-      thinkingConfig: { thinkingBudget: 1024 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          milestones: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                title: { type: Type.STRING },
-                content: { type: Type.STRING },
-                year: { type: Type.STRING }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-  
-  try {
-    const raw = JSON.parse(cleanJson(response.text));
-    return ensureArray(raw).map((l: any) => ({ ...l, id: l.id || crypto.randomUUID() }));
-  } catch (e) {
-    console.error("Lore parse error", e, response.text);
-    return [];
-  }
+  const { lore } = await postJson<{ lore: LoreEntry[] }>('/api/brand-lore', { brand });
+  return lore;
 };
 
 export const generateAdditionalLore = async (brand: Brand, existing: string[]): Promise<LoreEntry[]> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: REASONING_MODEL,
-    contents: `Generate 2 more unique historical records for "${brand.name}". Avoid these titles: ${existing.join(', ')}.
-    Return a JSON object with a "milestones" property.`,
-    config: {
-      thinkingConfig: { thinkingBudget: 1024 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          milestones: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                title: { type: Type.STRING },
-                content: { type: Type.STRING },
-                year: { type: Type.STRING }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-
-  try {
-    const raw = JSON.parse(cleanJson(response.text));
-    return ensureArray(raw).map((l: any) => ({ ...l, id: l.id || crypto.randomUUID() }));
-  } catch (e) {
-    console.error("Lore parse error", e, response.text);
-    return [];
-  }
+  const { lore } = await postJson<{ lore: LoreEntry[] }>('/api/brand-lore-more', { brand, existingTitles: existing });
+  return lore;
 };
 
-export const generateLoreImage = async (brandName: string, lore: LoreEntry): Promise<string> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: `A high-end, historical automotive photography of ${brandName}: ${lore.title}. ${lore.content}. Vintage style, cinematic, 8k, photorealistic.`,
-  });
-  const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-  return part ? `data:image/png;base64,${part.inlineData.data}` : '';
+export const generateLoreImage = async (brand: Brand, lore: LoreEntry): Promise<string> => {
+  const { imageUrl } = await postJson<{ imageUrl: string }>('/api/lore-image', { brand, lore });
+  return imageUrl;
 };
 
-export const generateCarSpecs = async (brand: Brand, tier: CarTier, requirements: string, existing: CarModel[]): Promise<any> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: REASONING_MODEL,
-    contents: `Engineer a new ${tier} model for the luxury brand "${brand.name}". 
-    
-    BRAND CONTEXT:
-    History: ${brand.history}
-    Design Philosophy: ${brand.designPhilosophy}
-    Materials Signature: ${brand.materials || 'Luxury bespoke'}
-    Aero Philosophy: ${brand.aerodynamics || 'Proprietary'}
-    
-    ENGINEERING BRIEF: ${requirements}. 
-    EXISTING FLEET: ${existing.map(m => m.name).join(', ')}.
-    
-    CRITICAL INSTRUCTION: Perform deep engineering reasoning. Ensure the technical specifications (horsepower, torque, weight, drag coefficient) are logically consistent with the resulting performance figures (0-60mph, top speed) and aligned with the brand's DNA.
-    
-    Include a long, evocative marketing blurb (300+ words) written in a high-end luxury tone that references the brand's philosophy.`,
-    config: {
-      thinkingConfig: { thinkingBudget: 24000 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          tagline: { type: Type.STRING },
-          price: { type: Type.STRING },
-          visualDescription: { type: Type.STRING },
-          marketingBlurb: { type: Type.STRING },
-          specs: {
-            type: Type.OBJECT,
-            properties: {
-              engine: { type: Type.STRING },
-              horsepower: { type: Type.STRING },
-              torque: { type: Type.STRING },
-              acceleration: { type: Type.STRING },
-              topSpeed: { type: Type.STRING },
-              weight: { type: Type.STRING },
-              drivetrain: { type: Type.STRING },
-              dimensions: { type: Type.STRING },
-              transmission: { type: Type.STRING },
-              dragCoefficient: { type: Type.STRING },
-              suspension: { type: Type.STRING },
-              brakes: { type: Type.STRING },
-              wheelDesign: { type: Type.STRING },
-              interiorMaterials: { type: Type.STRING },
-              soundSystem: { type: Type.STRING },
-              chassisConstruction: { type: Type.STRING },
-              driverAssistance: { type: Type.STRING }
-            }
-          }
-        },
-        required: ["name", "tagline", "price", "specs", "marketingBlurb", "visualDescription"]
-      }
-    }
-  });
-  return JSON.parse(cleanJson(response.text));
+export const generateCarSpecs = async (
+  brand: Brand,
+  tier: CarTier,
+  requirements: string,
+  existing: CarModel[],
+  program?: ModelProgram
+): Promise<any> => {
+  return postJson('/api/car-specs', { brand, tier, requirements, existing, program });
 };
 
-export const generateCarImage = async (brand: Brand, description: string, context: string, tier: CarTier, masterRef?: string, latestRef?: string): Promise<string> => {
-  const ai = getAI();
-  const parts: any[] = [];
-  if (masterRef) parts.push({ inlineData: { data: masterRef.split(',')[1], mimeType: 'image/png' } });
-  
-  const prompt = `Bespoke luxury ${tier} car design for ${brand.name}. 
-  Brand Philosophy: ${brand.designPhilosophy}. 
-  Visual Cues: ${brand.lightingSignature || ''}, ${brand.materials || ''}.
-  Model Blueprint: ${description}. 
-  Environment/Context: ${context}. 
-  Style: Photorealistic, high-end commercial automotive photography, 8k resolution, cinematic lighting.`;
-  
-  parts.push({ text: prompt });
-  
-  const response = await ai.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: { parts },
+export const generateCarImage = async (
+  brand: Brand,
+  description: string,
+  context: string,
+  tier: CarTier,
+  masterRef?: string,
+  latestRef?: string
+): Promise<string> => {
+  const { imageUrl } = await postJson<{ imageUrl: string }>('/api/car-image', {
+    brand,
+    description,
+    context,
+    tier,
+    masterRef,
+    latestRef
   });
-  const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-  return part ? `data:image/png;base64,${part.inlineData.data}` : '';
+  return imageUrl;
+};
+
+export const generateShowroomCapture = async (
+  context: string,
+  masterRef?: string,
+  latestRef?: string
+): Promise<string> => {
+  const { imageUrl } = await postJson<{ imageUrl: string }>('/api/showroom-capture', {
+    context,
+    masterRef,
+    latestRef
+  });
+  return imageUrl;
 };
 
 export const generateLaunchReviews = async (brand: Brand, model: CarModel): Promise<Review[]> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: `Generate 3 critical media reviews for the launch of the ${brand.name} ${model.name}.
-    Brand Tagline: ${brand.tagline}
-    Brand History Summary: ${brand.history.substring(0, 500)}...
-    Vehicle Positioning: ${model.marketingBlurb.substring(0, 300)}...
-    
-    The reviews should feel authentic to the brand's position in the luxury market.
-    Return a JSON object with a "reviews" property.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          reviews: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                publication: { type: Type.STRING },
-                author: { type: Type.STRING },
-                score: { type: Type.STRING },
-                headline: { type: Type.STRING },
-                summary: { type: Type.STRING },
-                persona: { type: Type.STRING, enum: ["PURIST", "FUTURIST", "LIFESTYLE"] }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-  const raw = JSON.parse(cleanJson(response.text));
-  return ensureArray(raw);
+  const { reviews } = await postJson<{ reviews: Review[] }>('/api/launch-reviews', { brand, model });
+  return reviews;
 };
 
 export const generateMarketInsight = async (brand: Brand, model: CarModel): Promise<MarketInsight> => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: REASONING_MODEL,
-    contents: `Analyze the high-end automotive market potential for the ${brand.name} ${model.name}.
-    Price: ${model.price}
-    Tier: ${model.tier}
-    Specs: ${JSON.stringify(model.specs)}
-    
-    Determine:
-    1. Collector Score (0-100) based on rarity, engineering, and brand prestige.
-    2. Resale Value projection (e.g., "High Appreciation (+15%/yr)", "Stable Hold", "Depreciating Asset", "Future Classic").
-    3. Target Demographic (specific buyer persona, e.g., "Silicon Valley Magnate", "Old World Royalty", "Track Day Purist").
-    4. Market Sentiment (A sophisticated investment memorandum paragraph).
-    
-    Return JSON.`,
-    config: {
-      thinkingConfig: { thinkingBudget: 2048 },
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          collectorScore: { type: Type.NUMBER },
-          resaleValue: { type: Type.STRING },
-          targetDemographic: { type: Type.STRING },
-          marketSentiment: { type: Type.STRING }
-        }
-      }
-    }
-  });
-  return JSON.parse(cleanJson(response.text));
+  const { insight } = await postJson<{ insight: MarketInsight }>('/api/market-insight', { brand, model });
+  return insight;
 };

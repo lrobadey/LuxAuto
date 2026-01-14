@@ -1,10 +1,10 @@
 
 import React, { useState } from 'react';
-import { Brand, CarModel, CarTier, CarVariant } from '../types';
+import { Brand, CarModel, CarTier, CarVariant, ModelProgram } from '../types';
 import { generateCarSpecs, generateCarImage } from '../services/geminiService';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { DEFAULT_TIERS } from '../constants';
+import { DEFAULT_TIERS, TIER_CONSTRAINTS } from '../constants';
 
 interface ModelStudioProps {
   brand: Brand;
@@ -38,27 +38,55 @@ const PRESETS = {
 export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels, onModelCreated, onBack }) => {
   const [selectedTier, setSelectedTier] = useState<CarTier>(CarTier.FLAGSHIP);
   const [customFeatures, setCustomFeatures] = useState('');
+  const [program, setProgram] = useState<ModelProgram>({
+    segment: '',
+    bodyStyle: '',
+    targetBuyer: '',
+    priceBand: '',
+    performanceGoal: '',
+    powertrainStrategy: '',
+    designSignature: ''
+  });
   const [activeModel, setActiveModel] = useState<CarModel | null>(null);
   const [variantPrompt, setVariantPrompt] = useState('Studio lighting, 3/4 front view, neutral background, high detail');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [seedVariant, setSeedVariant] = useState<CarVariant | null>(null);
+  const isDev = import.meta.env.DEV;
   
   const [selectedEnv, setSelectedEnv] = useState<string | null>(null);
   const [selectedFinish, setSelectedFinish] = useState<string | null>(null);
   const [selectedAngle, setSelectedAngle] = useState<string | null>(null);
+  const isProgramReady = Boolean(program.segment && program.bodyStyle && program.targetBuyer);
+  const tierTargets = TIER_CONSTRAINTS[selectedTier];
+
+  const applyTierTargets = () => {
+    if (!tierTargets) return;
+    setProgram((prev) => ({
+      ...prev,
+      segment: prev.segment || tierTargets.segment,
+      bodyStyle: prev.bodyStyle || tierTargets.bodyStyle,
+      priceBand: prev.priceBand || tierTargets.priceBand,
+      performanceGoal: prev.performanceGoal || tierTargets.performanceGoal,
+      powertrainStrategy: prev.powertrainStrategy || tierTargets.powertrainStrategy,
+      designSignature: prev.designSignature || tierTargets.designSignature
+    }));
+  };
 
   const handleCreatePlatform = async () => {
     setIsProcessing(true);
     try {
-      const specsData = await generateCarSpecs(brand, selectedTier, customFeatures, existingModels);
+      const specsData = await generateCarSpecs(brand, selectedTier, customFeatures, existingModels, program);
       const newModel: CarModel = {
         id: crypto.randomUUID(),
         brandId: brand.id,
         ...specsData,
         tier: selectedTier,
         variants: [],
+        program,
         isGenerating: false
       };
       setActiveModel(newModel);
+      setSeedVariant(null);
     } catch (error) {
       console.error(error);
       alert("Failed to engineer platform.");
@@ -69,6 +97,7 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
 
   const handleGenerateVariant = async () => {
     if (!activeModel) return;
+    if (activeModel.variants.length === 0) return;
     setIsProcessing(true);
 
     try {
@@ -113,6 +142,50 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleGenerateSeed = async () => {
+    if (!activeModel) return;
+    setIsProcessing(true);
+    try {
+      const combinedPrompt = [
+        selectedAngle ? PRESETS.angles.find(a => a.name === selectedAngle)?.prompt : '',
+        selectedEnv ? PRESETS.environments.find(e => e.name === selectedEnv)?.prompt : '',
+        selectedFinish ? PRESETS.finishes.find(f => f.name === selectedFinish)?.prompt : '',
+        variantPrompt
+      ].filter(Boolean).join(', ');
+      const imageUrl = await generateCarImage(
+        brand,
+        activeModel.visualDescription,
+        combinedPrompt,
+        activeModel.tier
+      );
+      setSeedVariant({
+        id: crypto.randomUUID(),
+        prompt: combinedPrompt,
+        imageUrl,
+        createdAt: Date.now()
+      });
+    } catch (error) {
+      console.error(error);
+      alert("Failed to establish look.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleLockSeed = () => {
+    if (!activeModel || !seedVariant) return;
+    setActiveModel({
+      ...activeModel,
+      variants: [seedVariant]
+    });
+    setSeedVariant(null);
+  };
+
+  const handleAbortProject = () => {
+    setActiveModel(null);
+    setSeedVariant(null);
   };
 
   const handleSaveToFleet = () => {
@@ -161,6 +234,82 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
               </div>
             </div>
 
+            <div className="space-y-4">
+              <label className="text-[10px] text-slate-500 uppercase tracking-[0.3em] mb-2 block font-bold">Program Brief</label>
+              <div className="border border-slate-800/60 bg-black/30 p-4 text-[10px] uppercase tracking-widest text-slate-500 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Tier Targets</span>
+                  <button
+                    type="button"
+                    onClick={applyTierTargets}
+                    className="text-amber-500 hover:text-amber-400 transition-colors"
+                  >
+                    Apply Targets
+                  </button>
+                </div>
+                {tierTargets && (
+                  <div className="space-y-2">
+                    <p><span className="text-slate-400">Price:</span> {tierTargets.priceBand}</p>
+                    <p><span className="text-slate-400">Segment:</span> {tierTargets.segment}</p>
+                    <p><span className="text-slate-400">Body:</span> {tierTargets.bodyStyle}</p>
+                    <p><span className="text-slate-400">Performance:</span> {tierTargets.performanceGoal}</p>
+                  </div>
+                )}
+              </div>
+              <Input 
+                label="Segment Intent"
+                placeholder="e.g. Ultra-luxury grand tourer, urban hyper-SUV..."
+                value={program.segment}
+                onChange={(e) => setProgram({ ...program, segment: e.target.value })}
+                className="bg-black/40 border-slate-800 focus:border-amber-500/50"
+              />
+              <Input 
+                label="Body Style"
+                placeholder="e.g. 2-door coupe, 4-door fastback..."
+                value={program.bodyStyle}
+                onChange={(e) => setProgram({ ...program, bodyStyle: e.target.value })}
+                className="bg-black/40 border-slate-800 focus:border-amber-500/50"
+              />
+              <Input 
+                label="Target Buyer"
+                placeholder="e.g. Heritage collectors, performance purists..."
+                value={program.targetBuyer}
+                onChange={(e) => setProgram({ ...program, targetBuyer: e.target.value })}
+                className="bg-black/40 border-slate-800 focus:border-amber-500/50"
+              />
+              <Input 
+                label="Price Band"
+                placeholder="e.g. $320k-$420k"
+                value={program.priceBand}
+                onChange={(e) => setProgram({ ...program, priceBand: e.target.value })}
+                className="bg-black/40 border-slate-800 focus:border-amber-500/50"
+              />
+              <Input 
+                label="Performance Goal"
+                placeholder="e.g. Sub-3s 0-60, 210+ mph"
+                value={program.performanceGoal}
+                onChange={(e) => setProgram({ ...program, performanceGoal: e.target.value })}
+                className="bg-black/40 border-slate-800 focus:border-amber-500/50"
+              />
+              <Input 
+                label="Powertrain Strategy"
+                placeholder="e.g. Twin-turbo V12 hybrid, quad-motor EV"
+                value={program.powertrainStrategy}
+                onChange={(e) => setProgram({ ...program, powertrainStrategy: e.target.value })}
+                className="bg-black/40 border-slate-800 focus:border-amber-500/50"
+              />
+              <Input 
+                label="Design Signature"
+                placeholder="e.g. Long-hood proportion, floating roofline"
+                value={program.designSignature}
+                onChange={(e) => setProgram({ ...program, designSignature: e.target.value })}
+                className="bg-black/40 border-slate-800 focus:border-amber-500/50"
+              />
+              <p className="text-[9px] text-slate-500 uppercase tracking-[0.3em]">
+                Required: Segment, Body Style, Target Buyer
+              </p>
+            </div>
+
             <Input 
               label="Engineering Brief"
               placeholder="e.g. Ultra-lightweight Aero, GT focused..." 
@@ -172,6 +321,7 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
             <Button 
               onClick={handleCreatePlatform} 
               isLoading={isProcessing} 
+              disabled={!isProgramReady}
               className="w-full py-5 text-md shadow-2xl shadow-amber-500/5"
             >
               {isProcessing ? 'Thinking Deeply...' : 'Initialize Synthesis'}
@@ -205,7 +355,12 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
           <p className="text-md text-slate-400 mt-2 italic font-light tracking-wide">"{activeModel.tagline}"</p>
         </div>
         <div className="flex gap-4">
-           <Button variant="ghost" onClick={() => setActiveModel(null)} className="hover:text-red-500 text-xs">Abort Project</Button>
+           <Button variant="ghost" onClick={handleAbortProject} className="hover:text-red-500 text-xs">Abort Project</Button>
+           {isDev && (
+             <Button variant="ghost" onClick={handleSaveToFleet} className="text-xs text-slate-400 hover:text-amber-500">
+               Dev: Enter Showroom
+             </Button>
+           )}
            <Button onClick={handleSaveToFleet} disabled={activeModel.variants.length === 0} className="px-10 h-14">
              {activeModel.variants.length === 0 ? 'Initialize Visualizer' : 'Authorize Production'}
            </Button>
@@ -215,6 +370,29 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
       <div className="flex flex-col lg:flex-row gap-12">
         
         <div className="w-full lg:w-4/12 space-y-8">
+          <div className="bg-slate-900/30 border border-slate-800/50 p-8 backdrop-blur-md relative group">
+            <h3 className="text-[10px] text-slate-500 uppercase tracking-[0.4em] mb-6 font-bold">Program Brief</h3>
+            {activeModel.program ? (
+              <div className="space-y-3 text-[10px] font-mono">
+                {[
+                  { label: 'Segment', value: activeModel.program.segment },
+                  { label: 'Body Style', value: activeModel.program.bodyStyle },
+                  { label: 'Target Buyer', value: activeModel.program.targetBuyer },
+                  { label: 'Price Band', value: activeModel.program.priceBand },
+                  { label: 'Performance Goal', value: activeModel.program.performanceGoal },
+                  { label: 'Powertrain', value: activeModel.program.powertrainStrategy },
+                  { label: 'Signature', value: activeModel.program.designSignature }
+                ].map((item, i) => (
+                  <div key={i} className="flex justify-between border-b border-slate-800/30 pb-3">
+                    <span className="text-slate-500 uppercase tracking-tighter">{item.label}</span>
+                    <span className="text-slate-200 text-right pl-4 font-bold">{item.value || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">No program brief captured.</p>
+            )}
+          </div>
           
           <div className="bg-slate-900/30 border border-slate-800/50 p-8 backdrop-blur-md relative group">
             <h3 className="text-[10px] text-slate-500 uppercase tracking-[0.4em] mb-8 font-bold flex justify-between items-center">
@@ -300,20 +478,40 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
                 value={variantPrompt}
                 onChange={(e) => setVariantPrompt(e.target.value)}
                />
-               <Button 
-                onClick={handleGenerateVariant} 
-                isLoading={isProcessing} 
-                className="w-full mt-6 h-14"
-                variant="outline"
-               >
-                 Capture Concept Frame
-               </Button>
+               {activeModel.variants.length === 0 ? (
+                 <>
+                   <Button 
+                    onClick={handleGenerateSeed} 
+                    isLoading={isProcessing} 
+                    className="w-full mt-6 h-14"
+                    variant="outline"
+                   >
+                     Capture Establishing Frame
+                   </Button>
+                   <Button
+                    onClick={handleLockSeed}
+                    disabled={!seedVariant || isProcessing}
+                    className="w-full mt-3 h-12"
+                   >
+                     Lock Design
+                   </Button>
+                 </>
+               ) : (
+                 <Button 
+                  onClick={handleGenerateVariant} 
+                  isLoading={isProcessing} 
+                  className="w-full mt-6 h-14"
+                  variant="outline"
+                 >
+                   Capture Concept Frame
+                 </Button>
+               )}
              </section>
           </div>
         </div>
 
         <div className="w-full lg:w-8/12">
-           {activeModel.variants.length === 0 && !isProcessing ? (
+           {activeModel.variants.length === 0 && !seedVariant && !isProcessing ? (
              <div className="w-full aspect-video border border-slate-900 bg-slate-900/10 flex flex-col items-center justify-center text-slate-700 relative group overflow-hidden">
                 <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%, transparent 50%, #fff 50%, #fff 75%, transparent 75%, transparent)' , backgroundSize: '10px 10px' }}></div>
                 <div className="text-7xl mb-6 opacity-10 group-hover:opacity-20 transition-opacity duration-1000">📷</div>
@@ -331,9 +529,9 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
                     </div>
                   )}
                   
-                  {activeModel.variants.length > 0 && (
+                  {(activeModel.variants[0] || seedVariant) && (
                     <img 
-                      src={activeModel.variants[0].imageUrl} 
+                      src={(activeModel.variants[0] || seedVariant)?.imageUrl} 
                       alt="Current Variant" 
                       className={`w-full h-full object-cover transition-all duration-1000 ${isProcessing ? 'blur-2xl scale-110 opacity-20' : 'blur-0 scale-100 opacity-100'}`}
                     />
@@ -342,7 +540,7 @@ export const ModelStudio: React.FC<ModelStudioProps> = ({ brand, existingModels,
                   <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black via-black/20 to-transparent">
                     <div className="max-w-xl">
                       <p className="text-[8px] text-amber-500/80 uppercase font-bold tracking-[0.4em] mb-2">Primary Projection</p>
-                      <p className="text-xs text-slate-400 font-light italic opacity-90 truncate">{activeModel.variants[0]?.prompt}</p>
+                      <p className="text-xs text-slate-400 font-light italic opacity-90 truncate">{(activeModel.variants[0] || seedVariant)?.prompt}</p>
                     </div>
                   </div>
                </div>

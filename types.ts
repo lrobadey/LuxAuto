@@ -31,6 +31,7 @@ export interface Brand {
   establishedYear?: string;
   headquarters?: string;
   lore?: LoreEntry[];
+  brief?: BrandBrief;
 }
 
 export enum CarTier {
@@ -46,6 +47,25 @@ export interface CarVariant {
   prompt: string;
   imageUrl: string;
   createdAt: number;
+}
+
+export interface BrandBrief {
+  archetype: string;
+  clientProfile: string;
+  performanceEthos: string;
+  materialEthos: string;
+  lightingEthos: string;
+  aeroEthos: string;
+}
+
+export interface ModelProgram {
+  segment: string;
+  bodyStyle: string;
+  targetBuyer: string;
+  priceBand: string;
+  performanceGoal: string;
+  powertrainStrategy: string;
+  designSignature: string;
 }
 
 export interface CarSpecs {
@@ -96,13 +116,9 @@ export interface CarModel {
   visualDescription: string;
   marketingBlurb: string; // Long marketing-focused description
   variants: CarVariant[];
+  program?: ModelProgram;
+  heroVariantId?: string;
   reviews?: Review[];
   marketInsight?: MarketInsight;
   isGenerating?: boolean;
-}
-
-export interface AppState {
-  view: ViewState;
-  currentBrand: Brand | null;
-  models: CarModel[];
 }

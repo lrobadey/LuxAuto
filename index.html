@@ -49,19 +49,47 @@
       .animate-fade-in {
         animation: fadeIn 0.5s ease-out forwards;
       }
+
+      @keyframes ambientDrift {
+        0% { transform: translate(-6%, -4%) scale(1); }
+        50% { transform: translate(6%, 4%) scale(1.05); }
+        100% { transform: translate(-6%, -4%) scale(1); }
+      }
+      .ambient-shift {
+        background:
+          radial-gradient(50% 50% at 20% 20%, rgba(245, 158, 11, 0.18), transparent 60%),
+          radial-gradient(40% 40% at 80% 10%, rgba(56, 189, 248, 0.10), transparent 65%),
+          radial-gradient(60% 60% at 30% 80%, rgba(148, 163, 184, 0.10), transparent 70%);
+        animation: ambientDrift 18s ease-in-out infinite;
+        opacity: 0.6;
+      }
+
+      .ambient-grain {
+        background-image:
+          repeating-linear-gradient(0deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04) 1px, transparent 1px, transparent 2px),
+          repeating-linear-gradient(90deg, rgba(255,255,255,0.035), rgba(255,255,255,0.035) 1px, transparent 1px, transparent 3px);
+        mix-blend-mode: soft-light;
+        opacity: 0.08;
+      }
+
+      .ambient-vignette {
+        box-shadow: inset 0 0 160px rgba(2, 6, 23, 0.9);
+      }
+
+      @keyframes lightSweep {
+        0% { transform: translateX(-60%) skewX(-12deg); opacity: 0; }
+        35% { opacity: 0.25; }
+        70% { opacity: 0.15; }
+        100% { transform: translateX(60%) skewX(-12deg); opacity: 0; }
+      }
+      .ambient-sweep {
+        background: linear-gradient(120deg, transparent 0%, rgba(245, 158, 11, 0.25) 45%, transparent 70%);
+        animation: lightSweep 8s ease-in-out infinite;
+      }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
-  }
-}
-</script>
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

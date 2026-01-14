@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
-import { Brand, CarModel, CarVariant, LoreEntry } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Brand, CarModel, CarVariant } from '../types';
 import { Button } from './ui/Button';
-import { generateLaunchReviews, generateCarImage, generateBrandLore, generateMarketInsight } from '../services/geminiService';
+import { useShowroomWorkflow } from '../services/useShowroomWorkflow';
 
 interface ShowroomProps {
   brand: Brand;
@@ -11,6 +11,7 @@ interface ShowroomProps {
   onReset: () => void;
   onBrandUpdate: (brand: Brand) => void;
   onModelUpdate: (model: CarModel) => void;
+  onModelDelete: (id: string) => void;
   onSave: () => void;
   onLoad: () => void;
 }
@@ -18,7 +19,7 @@ interface ShowroomProps {
 const TabButton: React.FC<{ active: boolean; onClick: () => void; label: string }> = ({ active, onClick, label }) => (
   <button
     onClick={onClick}
-    className={`flex-1 py-6 text-[10px] uppercase tracking-[0.3em] font-bold transition-all duration-300 relative ${
+    className={`flex-none md:flex-1 min-w-[190px] md:min-w-0 px-6 py-4 md:py-6 text-[10px] uppercase tracking-[0.3em] font-bold transition-all duration-300 relative whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
       active ? 'text-amber-500 bg-amber-500/5' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
     }`}
   >
@@ -41,6 +42,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
   onReset, 
   onBrandUpdate,
   onModelUpdate,
+  onModelDelete,
   onSave,
   onLoad
 }) => {
@@ -50,94 +52,111 @@ export const Showroom: React.FC<ShowroomProps> = ({
       ? models[models.length - 1].variants[0] 
       : null
   );
+
+  const [isReelPlaying, setIsReelPlaying] = useState(false);
+  const [reelMs, setReelMs] = useState(3500);
+  const [reelIndex, setReelIndex] = useState(0);
+
+  const variantsWithImages = activeModel?.variants.filter(v => Boolean(v.imageUrl)) ?? [];
+  const pinnedHeroSrc =
+    activeModel?.heroVariantId
+      ? activeModel.variants.find(v => v.id === activeModel.heroVariantId)?.imageUrl || null
+      : null;
+  const reelHeroSrc =
+    isReelPlaying && variantsWithImages.length > 0
+      ? variantsWithImages[reelIndex % variantsWithImages.length].imageUrl
+      : null;
+  const selectedHeroSrc = selectedVariant?.imageUrl ? selectedVariant.imageUrl : null;
+  const heroTargetSrc = reelHeroSrc ?? pinnedHeroSrc ?? selectedHeroSrc ?? variantsWithImages[0]?.imageUrl ?? null;
+
+  const [heroSrc, setHeroSrc] = useState<string | null>(() => heroTargetSrc);
+  const [heroPrevSrc, setHeroPrevSrc] = useState<string | null>(null);
+  const [isHeroTransitioning, setIsHeroTransitioning] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'specs' | 'gallery' | 'media' | 'market'>('gallery');
-  const [isLaunching, setIsLaunching] = useState(false);
-  const [isGeneratingPhoto, setIsGeneratingPhoto] = useState(false);
-  const [isAnalyzingMarket, setIsAnalyzingMarket] = useState(false);
-  
-  const [customPrompt, setCustomPrompt] = useState('');
   const [isDossierOpen, setIsDossierOpen] = useState(false);
-  const [isLoadingLore, setIsLoadingLore] = useState(false);
-  const [sessionReviews, setSessionReviews] = useState<Record<string, any[]>>({});
+  const {
+    isLaunching,
+    isGeneratingPhoto,
+    isAnalyzingMarket,
+    isLoadingLore,
+    customPrompt,
+    setCustomPrompt,
+    pendingDelete,
+    deletePhrase,
+    setDeletePhrase,
+    currentReviews,
+    launchVehicle,
+    analyzeMarket,
+    generateNewPhoto,
+    loadBrandLore,
+    requestDelete,
+    confirmDelete,
+    cancelDelete
+  } = useShowroomWorkflow({
+    brand,
+    models,
+    activeModel,
+    onBrandUpdate,
+    onModelUpdate,
+    onModelDelete,
+    setActiveModel,
+    setSelectedVariant
+  });
+
+  const updateActiveModel = (next: CarModel) => {
+    setActiveModel(next);
+    onModelUpdate(next);
+  };
+
+  const setHeroVariantId = (variantId?: string) => {
+    if (!activeModel) return;
+    setIsReelPlaying(false);
+    updateActiveModel({ ...activeModel, heroVariantId: variantId });
+  };
 
   const handleModelChange = (model: CarModel) => {
+    setIsReelPlaying(false);
+    setReelIndex(0);
     setActiveModel(model);
     setActiveTab('gallery');
-    if (model.variants.length > 0) setSelectedVariant(model.variants[0]);
-  };
-
-  const handleLaunchVehicle = async () => {
-    if (!activeModel) return;
-    setIsLaunching(true);
-    try {
-      const reviews = await generateLaunchReviews(brand, activeModel);
-      setSessionReviews(prev => ({ ...prev, [activeModel.id]: reviews }));
-    } catch (e) {
-      alert("Media launch failed.");
-    } finally {
-      setIsLaunching(false);
+    if (model.variants.length > 0) {
+      setSelectedVariant(model.variants[0]);
+    } else {
+      setSelectedVariant(null);
     }
   };
 
-  const handleAnalyzeMarket = async () => {
-    if (!activeModel) return;
-    setIsAnalyzingMarket(true);
-    try {
-      const insight = await generateMarketInsight(brand, activeModel);
-      const updatedModel = { ...activeModel, marketInsight: insight };
-      setActiveModel(updatedModel);
-      onModelUpdate(updatedModel);
-    } catch (e) {
-      console.error(e);
-      alert("Market analysis failed.");
-    } finally {
-      setIsAnalyzingMarket(false);
-    }
-  };
+  useEffect(() => {
+    if (!heroTargetSrc || heroTargetSrc === heroSrc) return;
+    if (heroSrc) setHeroPrevSrc(heroSrc);
+    setHeroSrc(heroTargetSrc);
+    setIsHeroTransitioning(true);
+    const t = window.setTimeout(() => {
+      setHeroPrevSrc(null);
+      setIsHeroTransitioning(false);
+    }, 650);
+    return () => window.clearTimeout(t);
+  }, [heroTargetSrc, heroSrc]);
 
-  const handleGenerateNewPhoto = async () => {
-    if (!activeModel) return;
-    setIsGeneratingPhoto(true);
-    try {
-      const imageUrl = await generateCarImage(brand, activeModel.visualDescription, customPrompt, activeModel.tier);
-      const newVariant = { id: crypto.randomUUID(), prompt: customPrompt, imageUrl, createdAt: Date.now() };
-      const updatedModel = {
-         ...activeModel,
-         variants: [newVariant, ...activeModel.variants]
-      };
-      setActiveModel(updatedModel);
-      onModelUpdate(updatedModel);
-      setSelectedVariant(newVariant);
-      setCustomPrompt('');
-    } catch (e) {
-      alert("Capture failed.");
-    } finally {
-      setIsGeneratingPhoto(false);
-    }
-  };
+  useEffect(() => {
+    setIsReelPlaying(false);
+    setReelIndex(0);
+  }, [activeModel?.id]);
+
+  useEffect(() => {
+    if (!isReelPlaying) return;
+    if (variantsWithImages.length <= 1) return;
+    const t = window.setInterval(() => {
+      setReelIndex(prev => (prev + 1) % variantsWithImages.length);
+    }, reelMs);
+    return () => window.clearInterval(t);
+  }, [isReelPlaying, reelMs, variantsWithImages.length]);
 
   const handleOpenArchives = async () => {
     setIsDossierOpen(true);
-    if (!brand.lore || brand.lore.length === 0) {
-      setIsLoadingLore(true);
-      try {
-        const lore = await generateBrandLore(brand);
-        const sortedLore = lore.sort((a, b) => {
-           const yearA = parseInt(a.year.replace(/\D/g, '')) || 0;
-           const yearB = parseInt(b.year.replace(/\D/g, '')) || 0;
-           return yearA - yearB;
-        });
-        onBrandUpdate({ ...brand, lore: sortedLore });
-      } catch (e) {
-        console.error("Failed to load lore", e);
-      } finally {
-        setIsLoadingLore(false);
-      }
-    }
+    await loadBrandLore();
   };
-
-  const currentReviews = activeModel ? (activeModel.reviews || sessionReviews[activeModel.id]) : undefined;
 
   return (
     <div className="w-full h-full flex flex-col animate-fade-in relative bg-slate-950">
@@ -163,12 +182,24 @@ export const Showroom: React.FC<ShowroomProps> = ({
               <div 
                 key={model.id} 
                 onClick={() => handleModelChange(model)} 
-                className={`p-5 border transition-all duration-500 cursor-pointer group ${
+                className={`p-5 border transition-all duration-500 cursor-pointer group relative ${
                   activeModel?.id === model.id 
                     ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20' 
                     : 'border-white/5 hover:border-white/20 hover:bg-white/5'
                 }`}
               >
+                <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      requestDelete(model);
+                    }}
+                    className="h-8 w-8 border border-white/10 text-slate-600 hover:text-red-400 hover:border-red-500/40 transition-colors"
+                    aria-label={`Delete ${model.name}`}
+                  >
+                    ✕
+                  </button>
+                </div>
                 <span className="text-[8px] tracking-[0.3em] uppercase text-slate-500 font-bold block mb-1">{model.tier}</span>
                 <div className={`font-serif text-lg tracking-wider ${activeModel?.id === model.id ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
                   {model.name}
@@ -182,15 +213,38 @@ export const Showroom: React.FC<ShowroomProps> = ({
           {activeModel && (
             <div className="animate-fade-in">
               <div className="relative w-full h-[65vh] bg-black shadow-inner overflow-hidden">
-                 {selectedVariant && <img src={selectedVariant.imageUrl} className="w-full h-full object-cover transition-opacity duration-1000" />}
-                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent flex flex-col justify-end p-12 pointer-events-none">
-                    <span className="text-amber-500 text-xs font-bold uppercase tracking-[0.6em] mb-4 opacity-0 animate-fade-in" style={{animationDelay: '300ms', animationFillMode: 'forwards'}}>THE PREMIERE OF</span>
-                    <h2 className="text-7xl font-serif text-white tracking-tighter mb-3 uppercase leading-none">{activeModel.name}</h2>
-                    <p className="text-2xl font-light text-slate-300 italic tracking-wide max-w-2xl">"{activeModel.tagline}"</p>
+                 {heroPrevSrc && (
+                   <img
+                     src={heroPrevSrc}
+                     className={`absolute inset-0 w-full h-full object-cover scale-[1.02] transition-opacity duration-700 ${isHeroTransitioning ? 'opacity-0' : 'opacity-100'}`}
+                     alt="Previous capture"
+                     aria-hidden="true"
+                   />
+                 )}
+                 {heroSrc && (
+                   <img
+                     src={heroSrc}
+                     className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${
+                       isHeroTransitioning ? 'opacity-100 scale-[1.02]' : 'opacity-100 scale-[1.01]'
+                     }`}
+                     alt="Selected capture"
+                   />
+                 )}
+                 <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute inset-0 ambient-vignette"></div>
+                    <div className="absolute -left-1/3 top-0 h-full w-2/3 ambient-sweep opacity-50"></div>
+                 </div>
+                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent pointer-events-none"></div>
+                 <div className="absolute top-6 left-6 md:top-8 md:left-10 pointer-events-none max-w-[280px] md:max-w-sm">
+                    <div className="bg-slate-950/50 border border-white/10 backdrop-blur-2xl px-4 py-4 shadow-[0_18px_50px_rgba(2,6,23,0.45)]">
+                      <span className="text-amber-500 text-[9px] font-bold uppercase tracking-[0.6em] mb-2 block opacity-0 animate-fade-in" style={{animationDelay: '300ms', animationFillMode: 'forwards'}}>THE PREMIERE OF</span>
+                      <h2 className="text-3xl md:text-5xl font-serif text-white tracking-tight uppercase leading-none">{activeModel.name}</h2>
+                    </div>
+                    <p className="mt-3 text-sm md:text-base font-light text-slate-300 italic tracking-wide max-w-[240px] md:max-w-xs">"{activeModel.tagline}"</p>
                  </div>
               </div>
 
-              <div className="flex border-b border-white/10 bg-slate-950/90 backdrop-blur-xl sticky top-0 z-30">
+              <div className="flex flex-nowrap overflow-x-auto md:overflow-visible border-b border-white/10 bg-slate-950/90 backdrop-blur-xl sticky top-0 z-30">
                 <TabButton active={activeTab === 'gallery'} onClick={() => setActiveTab('gallery')} label="Visual Portfolio" />
                 <TabButton active={activeTab === 'specs'} onClick={() => setActiveTab('specs')} label="Technical Manifesto" />
                 <TabButton active={activeTab === 'media'} onClick={() => setActiveTab('media')} label="Global Reception" />
@@ -199,6 +253,50 @@ export const Showroom: React.FC<ShowroomProps> = ({
 
               {activeTab === 'gallery' && (
                 <div className="p-10 space-y-12">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant={isReelPlaying ? 'outline' : 'ghost'}
+                        onClick={() => setIsReelPlaying(true)}
+                        className="text-xs"
+                        disabled={variantsWithImages.length <= 1}
+                      >
+                        Play Reel
+                      </Button>
+                      <Button
+                        variant={!isReelPlaying ? 'outline' : 'ghost'}
+                        onClick={() => setIsReelPlaying(false)}
+                        className="text-xs"
+                        disabled={!isReelPlaying}
+                      >
+                        Pause
+                      </Button>
+                      <div className="h-8 w-px bg-white/10 mx-2"></div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[9px] uppercase tracking-[0.3em] text-slate-500 font-bold">Cadence</span>
+                        <select
+                          value={reelMs}
+                          onChange={(e) => setReelMs(parseInt(e.target.value, 10) || 3500)}
+                          className="bg-black/40 border border-slate-800 px-3 py-2 text-[10px] uppercase tracking-[0.3em] text-slate-300 outline-none focus:border-amber-500/50"
+                          aria-label="Reel speed"
+                        >
+                          <option value={2500}>2.5s</option>
+                          <option value={3500}>3.5s</option>
+                          <option value={5000}>5.0s</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {activeModel.heroVariantId && (
+                        <Button variant="ghost" onClick={() => setHeroVariantId(undefined)} className="text-xs text-slate-500 hover:text-white">
+                          Clear Hero
+                        </Button>
+                      )}
+                      <div className="text-[9px] uppercase tracking-[0.3em] text-slate-600 font-bold">
+                        {variantsWithImages.length} Captures
+                      </div>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {activeModel.variants.map((v) => (
                       <div 
@@ -206,10 +304,30 @@ export const Showroom: React.FC<ShowroomProps> = ({
                         className={`aspect-video border cursor-pointer overflow-hidden group relative transition-all duration-500 ${
                           selectedVariant?.id === v.id ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-slate-800 hover:border-slate-600'
                         }`} 
-                        onClick={() => setSelectedVariant(v)}
+                        onClick={() => {
+                          setIsReelPlaying(false);
+                          setSelectedVariant(v);
+                        }}
                       >
                         <img src={v.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[1.5s]" />
                         <div className={`absolute inset-0 bg-amber-500/10 transition-opacity duration-300 ${selectedVariant?.id === v.id ? 'opacity-100' : 'opacity-0'}`}></div>
+                        <div className="absolute top-2 right-2 flex gap-2">
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setHeroVariantId(activeModel.heroVariantId === v.id ? undefined : v.id);
+                            }}
+                            className={`h-8 px-3 border text-[9px] uppercase tracking-[0.3em] font-bold transition-colors ${
+                              activeModel.heroVariantId === v.id
+                                ? 'border-amber-500/60 bg-amber-500/10 text-amber-400'
+                                : 'border-white/10 bg-slate-950/40 text-slate-400 hover:text-white hover:border-white/20'
+                            }`}
+                            aria-label={activeModel.heroVariantId === v.id ? "Clear hero image" : "Set as hero image"}
+                            disabled={!v.imageUrl}
+                          >
+                            Hero
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -228,7 +346,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
                           />
                        </div>
                        <div className="flex flex-col justify-end">
-                         <Button onClick={handleGenerateNewPhoto} isLoading={isGeneratingPhoto} className="h-14 font-bold">New Capture</Button>
+                         <Button onClick={generateNewPhoto} isLoading={isGeneratingPhoto} className="h-14 font-bold">New Capture</Button>
                        </div>
                     </div>
                   </div>
@@ -290,7 +408,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
                    {!currentReviews ? (
                      <div className="text-center py-24 border border-dashed border-slate-800 rounded-lg bg-slate-900/10">
                        <p className="text-slate-500 text-sm font-serif mb-8 uppercase tracking-[0.2em]">Awaiting Global Launch Sequence</p>
-                       <Button onClick={handleLaunchVehicle} isLoading={isLaunching} className="px-12 h-14">Initiate Media Premiere</Button>
+                      <Button onClick={launchVehicle} isLoading={isLaunching} className="px-12 h-14">Initiate Media Premiere</Button>
                      </div>
                    ) : (
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
@@ -318,7 +436,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
                      <div className="text-center py-24 border border-dashed border-slate-800 rounded-lg bg-slate-900/10">
                        <div className="mb-8 text-4xl opacity-20">📊</div>
                        <p className="text-slate-500 text-sm font-serif mb-8 uppercase tracking-[0.2em]">Financial Data Not Yet Synthesized</p>
-                       <Button onClick={handleAnalyzeMarket} isLoading={isAnalyzingMarket} className="px-12 h-14">Commission Market Valuation</Button>
+                      <Button onClick={analyzeMarket} isLoading={isAnalyzingMarket} className="px-12 h-14">Commission Market Valuation</Button>
                      </div>
                    ) : (
                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -435,6 +553,52 @@ export const Showroom: React.FC<ShowroomProps> = ({
                </div>
              )}
            </div>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
+          <div className="w-full max-w-xl border border-amber-500/30 bg-slate-950/95 p-10 shadow-[0_0_80px_rgba(245,158,11,0.15)]">
+            <div className="flex items-start justify-between gap-6 mb-8">
+              <div>
+                <p className="text-[9px] uppercase tracking-[0.5em] text-amber-500 font-bold">Decommission Protocol</p>
+                <h3 className="text-3xl font-serif text-white mt-4">Permanently dissolve {pendingDelete.name}?</h3>
+                <p className="text-sm text-slate-400 mt-3 leading-relaxed">
+                  This removes the model and its imagery from the fleet vault. This cannot be reversed.
+                </p>
+              </div>
+              <button
+                onClick={cancelDelete}
+                className="h-10 w-10 border border-slate-800 text-slate-500 hover:text-white hover:border-white transition-colors"
+                aria-label="Close deletion dialog"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-black/40 border border-slate-800 p-6">
+                <p className="text-[9px] uppercase tracking-[0.4em] text-slate-500 font-bold mb-3">Verification Phrase</p>
+                <p className="text-sm text-slate-400 mb-4">Type <span className="text-amber-500 font-bold">DISSOLVE</span> to confirm.</p>
+                <input
+                  value={deletePhrase}
+                  onChange={(event) => setDeletePhrase(event.target.value)}
+                  className="w-full bg-transparent border border-slate-700 p-4 text-xs text-slate-200 uppercase tracking-[0.4em] focus:border-amber-500/60 outline-none"
+                  placeholder="DISSOLVE"
+                />
+              </div>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button variant="ghost" onClick={cancelDelete} className="h-12 w-full">Keep In Fleet</Button>
+                <Button
+                  onClick={confirmDelete}
+                  disabled={deletePhrase.trim().toUpperCase() !== 'DISSOLVE'}
+                  className="h-12 w-full bg-red-500 text-white hover:bg-red-400"
+                >
+                  Dissolve Model
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
       

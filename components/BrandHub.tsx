@@ -35,8 +35,8 @@ export const BrandHub: React.FC<BrandHubProps> = ({ brand, onUpdate, onProceed, 
 
   const sortLore = (lore: LoreEntry[]) => {
     return [...lore].sort((a, b) => {
-      const yearA = parseInt(a.year.replace(/\D/g, '')) || 0;
-      const yearB = parseInt(b.year.replace(/\D/g, '')) || 0;
+      const yearA = parseInt((a.year || '').replace(/\D/g, '')) || 0;
+      const yearB = parseInt((b.year || '').replace(/\D/g, '')) || 0;
       return yearA - yearB;
     });
   };
@@ -90,7 +90,7 @@ export const BrandHub: React.FC<BrandHubProps> = ({ brand, onUpdate, onProceed, 
   const handleVisualizeLore = async (entry: LoreEntry) => {
     setVisualizingId(entry.id);
     try {
-      const imageUrl = await generateLoreImage(localBrand.name, entry);
+      const imageUrl = await generateLoreImage(localBrand, entry);
       const updatedLore = localBrand.lore?.map(l => 
         l.id === entry.id ? { ...l, imageUrl } : l
       );
