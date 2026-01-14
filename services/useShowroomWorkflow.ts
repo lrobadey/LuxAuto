@@ -68,11 +68,28 @@ export const useShowroomWorkflow = ({
     if (!activeModel) return;
     setIsGeneratingPhoto(true);
     try {
-      const latestReference = activeModel.variants[0]?.imageUrl;
-      const initialReference = activeModel.variants.length > 0
-        ? activeModel.variants[activeModel.variants.length - 1].imageUrl
-        : undefined;
-      const imageUrl = await generateShowroomCapture(customPrompt, initialReference, latestReference);
+      // Avoid 413 payload-too-large errors on hosted runtimes by trimming large data URLs.
+      const MAX_REF_CHARS = 900_000;
+      const MAX_TOTAL_REF_CHARS = 1_500_000;
+      const normalizeRef = (ref?: string) => {
+        if (!ref) return undefined;
+        if (!ref.startsWith('data:image')) return ref;
+        return ref.length <= MAX_REF_CHARS ? ref : undefined;
+      };
+
+      const latestCandidate = normalizeRef(activeModel.variants[0]?.imageUrl);
+      const masterCandidate = normalizeRef(
+        activeModel.variants.length > 0 ? activeModel.variants[activeModel.variants.length - 1].imageUrl : undefined
+      );
+
+      let masterRef = masterCandidate;
+      let latestRef = latestCandidate;
+      const totalSize = (masterRef?.length || 0) + (latestRef?.length || 0);
+      if (totalSize > MAX_TOTAL_REF_CHARS) {
+        masterRef = undefined;
+      }
+
+      const imageUrl = await generateShowroomCapture(customPrompt, masterRef, latestRef);
       const newVariant = { id: crypto.randomUUID(), prompt: customPrompt, imageUrl, createdAt: Date.now() };
       const updatedModel = {
         ...activeModel,

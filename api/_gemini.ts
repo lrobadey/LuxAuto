@@ -145,12 +145,49 @@ const formatVisualContext = (brand: any): string => {
   return parts.join(' ');
 };
 
-const extractDataUrlPayload = (value: string | undefined) => {
+const parseDataUrl = (value: string) => {
+  const match = /^data:([^;]+);base64,(.+)$/.exec(value);
+  if (!match) return null;
+  const mimeType = match[1] || 'application/octet-stream';
+  const data = match[2] || '';
+  if (!mimeType.startsWith('image/')) return null;
+  return { mimeType, data };
+};
+
+const isAllowedImageUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.endsWith('.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+};
+
+const fetchImageAsBase64 = async (url: string) => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const mimeType = (response.headers.get('content-type') || 'image/png').split(';')[0].trim();
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return { mimeType, data: buffer.toString('base64') };
+  } catch {
+    return null;
+  }
+};
+
+const resolveImagePart = async (value: string | undefined) => {
   if (!value || typeof value !== 'string') return null;
-  const [prefix, data] = value.split(',', 2);
-  if (!prefix || !data) return null;
-  if (!prefix.includes('data:image')) return null;
-  return data;
+  if (value.startsWith('data:image')) {
+    const parsed = parseDataUrl(value);
+    if (!parsed) return null;
+    return { inlineData: { data: parsed.data, mimeType: parsed.mimeType } };
+  }
+  if (isAllowedImageUrl(value)) {
+    const fetched = await fetchImageAsBase64(value);
+    if (!fetched || !fetched.mimeType.startsWith('image/')) return null;
+    return { inlineData: { data: fetched.data, mimeType: fetched.mimeType } };
+  }
+  return null;
 };
 
 export const createBrandIdentity = async (keywords: string, tone: string, brief?: any) => {
@@ -376,11 +413,11 @@ export const createCarImage = async (
   const parts: any[] = [];
   const visualContext = formatVisualContext(brand);
   const visualLine = visualContext ? `Brand Visual DNA: ${visualContext}.` : '';
-  const masterData = extractDataUrlPayload(masterRef);
-  const latestData = extractDataUrlPayload(latestRef);
-  if (masterData) parts.push({ inlineData: { data: masterData, mimeType: 'image/png' } });
-  if (latestData) parts.push({ inlineData: { data: latestData, mimeType: 'image/png' } });
-  const referenceNote = masterData || latestData
+  const masterPart = await resolveImagePart(masterRef);
+  const latestPart = await resolveImagePart(latestRef);
+  if (masterPart) parts.push(masterPart);
+  if (latestPart) parts.push(latestPart);
+  const referenceNote = masterPart || latestPart
     ? 'Use the first image as the master reference for proportions and brand DNA. Use the second image to retain the latest styling updates. Preserve overall silhouette unless the blueprint explicitly changes it.'
     : '';
   const deltaNote = 'Apply only the described changes; keep all other design features unchanged.';
@@ -405,11 +442,11 @@ export const createCarImage = async (
 export const createShowroomCapture = async (context: string, masterRef?: string, latestRef?: string) => {
   const ai = getAI();
   const parts: any[] = [];
-  const masterData = extractDataUrlPayload(masterRef);
-  const latestData = extractDataUrlPayload(latestRef);
-  if (masterData) parts.push({ inlineData: { data: masterData, mimeType: 'image/png' } });
-  if (latestData) parts.push({ inlineData: { data: latestData, mimeType: 'image/png' } });
-  const referenceNote = masterData || latestData
+  const masterPart = await resolveImagePart(masterRef);
+  const latestPart = await resolveImagePart(latestRef);
+  if (masterPart) parts.push(masterPart);
+  if (latestPart) parts.push(latestPart);
+  const referenceNote = masterPart || latestPart
     ? 'Use the first image as the master reference for proportions and brand DNA. Use the second image to retain the latest styling updates. Preserve overall silhouette unless the context explicitly changes it.'
     : '';
   const prompt = [

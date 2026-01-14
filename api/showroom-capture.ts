@@ -1,5 +1,6 @@
 import { readJsonBody, sendJson, methodNotAllowed } from './_http.js';
 import { createShowroomCapture } from './_gemini.js';
+import { maybeUploadImageDataUrl } from './_blob.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -9,11 +10,12 @@ export default async function handler(req: any, res: any) {
 
   try {
     const { context, masterRef, latestRef } = await readJsonBody(req);
-    const imageUrl = await createShowroomCapture(
+    const dataUrl = await createShowroomCapture(
       String(context || ''),
       masterRef,
       latestRef
     );
+    const imageUrl = await maybeUploadImageDataUrl(dataUrl, 'showroom-captures');
     sendJson(res, 200, { imageUrl });
   } catch (error) {
     console.error('showroom-capture failed', error);

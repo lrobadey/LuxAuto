@@ -1,5 +1,6 @@
 import { readJsonBody, sendJson, methodNotAllowed } from './_http.js';
 import { createCarImage } from './_gemini.js';
+import { maybeUploadImageDataUrl } from './_blob.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -9,7 +10,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const { brand, description, context, tier, masterRef, latestRef } = await readJsonBody(req);
-    const imageUrl = await createCarImage(
+    const dataUrl = await createCarImage(
       brand || {},
       String(description || ''),
       String(context || ''),
@@ -17,6 +18,7 @@ export default async function handler(req: any, res: any) {
       masterRef,
       latestRef
     );
+    const imageUrl = await maybeUploadImageDataUrl(dataUrl, 'car-images');
     sendJson(res, 200, { imageUrl });
   } catch (error) {
     console.error('car-image failed', error);
